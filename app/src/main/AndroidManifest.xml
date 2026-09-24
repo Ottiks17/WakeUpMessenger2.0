@@ -10,10 +10,21 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- TODO: заменить на <queries> с пакетом WMS (см. ниже) и удалить это разрешение.
+         Оставлено, чтобы не сломать текущее поведение, пока не известен пакет WMS. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- TODO: раскомментировать и подставить реальный пакет WMS
+    <queries>
+        <package android:name="PUT.WMS.PACKAGE.HERE" />
+    </queries>
+    -->
+
     <!-- Требуется для команды restart. Выдаётся только системному/привилегированному приложению.
-         Если не выдано — используется fallback через su, иначе ошибка пишется в лог. -->
+         TODO: решить — Device Owner (DevicePolicyManager.reboot), priv-app или SDK вендора.
+         Fallback через su убрать. -->
     <uses-permission android:name="android.permission.REBOOT"
         tools:ignore="ProtectedPermissions" />
 
@@ -22,9 +33,9 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.WakeUpMessenger">
 
         <activity
@@ -57,15 +68,16 @@
                 android:value="Постоянное XMPP-соединение с сервером склада для приёма команд и сообщений на ТСД" />
         </service>
 
+        <!-- Системные броадкасты доставляются и при exported=false; чужие приложения
+             больше не могут слать этому ресиверу поддельные интенты.
+             QUICKBOOT_* убраны: добавлять только после проверки на конкретной модели ТСД. -->
         <receiver
             android:name=".service.BootReceiver"
             android:enabled="true"
-            android:exported="true"
+            android:exported="false"
             android:directBootAware="false">
-            <intent-filter android:priority="1000">
+            <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
