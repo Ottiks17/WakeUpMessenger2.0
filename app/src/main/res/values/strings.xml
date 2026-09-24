@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">WakeUp Messenger</string>
+    <string name="notif_service_title">WakeUp Messenger</string>
+    <string name="notif_service_text">Активен, ожидание команд</string>
+    <string name="battery_hint">Для работы сервиса необходимо отключить оптимизацию батареи</string>
+    <string name="btn_open_settings">Открыть настройки</string>
+    <string name="btn_check_again">Проверить снова</string>
+</resources>
