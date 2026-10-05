@@ -56,7 +56,6 @@ import com.wakemessenger.ui.SettingsViewModel
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenLog: () -> Unit,
-    onOpenApi: () -> Unit,
     vm: SettingsViewModel = viewModel()
 ) {
     val ui by vm.ui.collectAsState()
@@ -106,14 +105,13 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { vm.reconnect() }) { Text("Переподключить") }
-                        OutlinedButton(onClick = onOpenApi) { Text("API-запросы") }
                     }
                 }
             }
 
             SectionTitle("Режим подключения XMPP")
             Text(
-                "Чат подключается независимо от блока «API-запросы» ниже.",
+                "«Через REST API» — учётные данные выдаёт сервер (п. 4.1 ТЗ); «Вручную» — вводятся ниже.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
@@ -209,7 +207,7 @@ fun SettingsScreen(
                 )
             }
 
-            SectionTitle("REST API (используется блоком «API-запросы» и режимом «Через REST API» выше)")
+            SectionTitle("REST API")
             OutlinedTextField(
                 value = ui.apiHost,
                 onValueChange = { vm.update(Const.S_API_HOST, it) },
@@ -232,21 +230,6 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            SectionTitle("WMS-приложение")
-            OutlinedTextField(
-                value = ui.wmsPackage,
-                onValueChange = { vm.update(Const.S_WMS_PACKAGE, it) },
-                label = { Text("Package WMS") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = ui.wmsAction,
-                onValueChange = { vm.update(Const.S_WMS_ACTION, it) },
-                label = { Text("Intent action") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
             Button(onClick = { vm.save { vm.reload() } }, modifier = Modifier.fillMaxWidth()) {
                 Text("Сохранить настройки")
             }

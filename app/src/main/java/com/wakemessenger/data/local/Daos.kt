@@ -1,3 +1,4 @@
+
 package com.wakemessenger.data.local
 
 import androidx.room.Dao
@@ -22,6 +23,13 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(m: MessageEntity)
 
+    /**
+     * Для входящих: повторная доставка того же stanza id не перезаписывает строку
+     * (REPLACE сбрасывал read=0). Возвращает rowId или -1, если запись уже была.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(m: MessageEntity): Long
+
     @Query("SELECT * FROM chat_messages WHERE chatJid = :jid ORDER BY timestamp ASC")
     fun observeChat(jid: String): Flow<List<MessageEntity>>
 
@@ -36,9 +44,6 @@ interface MessageDao {
 
     @Query("SELECT * FROM chat_messages WHERE chatJid = :jid AND outgoing = 0 AND read = 0")
     suspend fun unreadIncoming(jid: String): List<MessageEntity>
-
-    @Query("SELECT COUNT(*) FROM chat_messages WHERE outgoing = 0 AND read = 0")
-    fun observeTotalUnread(): Flow<Int>
 
     @Query(
         """
@@ -95,3 +100,5 @@ interface SettingsDao {
     @Query("SELECT * FROM chat_settings")
     fun observeAll(): Flow<List<SettingEntity>>
 }
+
+

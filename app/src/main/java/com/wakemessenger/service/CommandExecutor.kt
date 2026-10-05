@@ -1,6 +1,8 @@
+
 package com.wakemessenger.service
 
 import android.content.Context
+import com.wakemessenger.core.Const
 import com.wakemessenger.core.FileLogger
 import com.wakemessenger.data.remote.ApiClient
 import com.wakemessenger.data.repo.SettingsRepository
@@ -18,7 +20,7 @@ class CommandExecutor(
     private val notifications: NotificationHelper
 ) {
     private val tag = "CMD"
-    private val wms = WmsLauncher(ctx, log)
+    private val wms = WmsLauncher(ctx, log, notifications)
     private val rebooter = DeviceRebooter(ctx, log)
 
     suspend fun execute(event: CommandEvent) {
@@ -27,14 +29,15 @@ class CommandExecutor(
             is Command.Task -> handleTask(c.taskId)
             is Command.Update -> notifications.command(
                 "Доступно обновление WMS",
-                "Рекомендуется обновить WMS-приложение до версии ${c.version}"
+                "Рекомендуется обновить WMS-приложение до версии ${c.version}",
+                event.priority
             )
             Command.Restart -> rebooter.reboot()
             Command.Ping -> {
                 val ok = xmpp.sendRaw(event.fromJid, "pong")
                 log.i(tag, "Ответ pong -> ${event.fromJid}: ${if (ok) "отправлен" else "ошибка"}")
             }
-            is Command.Notification -> notifications.command("WakeUp Messenger", c.text)
+            is Command.Notification -> notifications.command("WakeUp Messenger", c.text, event.priority)
         }
     }
 
@@ -50,9 +53,11 @@ class CommandExecutor(
         } catch (t: Throwable) {
             log.e(tag, "Ошибка подтверждения пробуждения task_id=$taskId: ${t.message} — WMS всё равно запускается")
         }
-        val launched = wms.launch(settings.wmsPackage(), settings.wmsAction(), taskId)
+        val launched = wms.launch(Const.WMS_PACKAGE, Const.WMS_ACTION, taskId)
         if (!launched) {
-            notifications.command("Не удалось запустить WMS", "Задание $taskId. Проверьте настройки пакета WMS.")
+            notifications.command("Не удалось запустить WMS", "Задание $taskId. Проверьте, что WMS-приложение установлено.")
         }
     }
 }
+
+

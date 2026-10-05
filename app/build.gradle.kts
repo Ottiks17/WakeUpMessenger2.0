@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,6 +17,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         vectorDrawables { useSupportLibrary = true }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -41,6 +43,11 @@ android {
         buildConfig = true
     }
 
+    // Схемы Room нужны тесту миграций (androidTest)
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     packaging {
         resources {
             excludes += setOf(
@@ -54,19 +61,26 @@ android {
     }
 }
 
+// exportSchema = true: схемы БД кладутся в app/schemas и коммитятся в git
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 configurations.all {
-    exclude(group = "xpp3", module = "xpp3")
+    // xpp3:xpp3 и xpp3:xpp3_min приносят org.xmlpull.v1.XmlPullParser, который на Android
+    // уже есть в платформе (его реализует системный XmlResourceParser). Минификатор R8
+    // падает: "Library class XmlResourceParser implements program class XmlPullParser".
+    // Исключаем весь group xpp3 — org.xmlpull.v1 предоставляет платформа.
+    exclude(group = "xpp3")
 }
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
 
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
 
     // Compose
@@ -74,7 +88,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.navigation:navigation-compose:2.8.4")
     debugImplementation("androidx.compose.ui:ui-tooling")
@@ -95,6 +108,14 @@ dependencies {
     implementation("org.igniterealtime.smack:smack-experimental:4.4.8")
     implementation("org.igniterealtime.smack:smack-resolver-minidns:4.4.8")
 
+    // Тесты
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+
     // Безопасное хранение fallback-кредов
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }
+
+

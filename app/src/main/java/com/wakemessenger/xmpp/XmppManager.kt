@@ -1,9 +1,11 @@
+
 package com.wakemessenger.xmpp
 
 import android.content.Context
 import com.wakemessenger.BuildConfig
 import com.wakemessenger.core.Const
 import com.wakemessenger.core.FileLogger
+import com.wakemessenger.data.local.MsgPriority
 import com.wakemessenger.data.local.MsgStatus
 import com.wakemessenger.data.remote.XmppCredentials
 import com.wakemessenger.data.repo.ChatRepository
@@ -28,6 +30,7 @@ import org.jivesoftware.smack.packet.Message
 import org.jivesoftware.smack.packet.MessageBuilder
 import org.jivesoftware.smack.packet.Presence
 import org.jivesoftware.smack.packet.PresenceBuilder
+import org.jivesoftware.smack.packet.StandardExtensionElement
 import org.jivesoftware.smack.roster.Roster
 import org.jivesoftware.smack.roster.RosterListener
 import org.jivesoftware.smack.sasl.SASLErrorException
@@ -63,10 +66,21 @@ sealed class XmppState {
 }
 
 /** Событие «пришла команда» — обрабатывается сервисом. */
-data class CommandEvent(val command: Command, val fromJid: String, val rawBody: String)
+data class CommandEvent(
+    val command: Command,
+    val fromJid: String,
+    val rawBody: String,
+    /** Эффективный приоритет (critical от недоверенного отправителя уже понижен до high). */
+    val priority: String = MsgPriority.NORMAL
+)
 
 /** Событие «пришло текстовое сообщение» — для уведомления пользователя. */
-data class TextEvent(val fromJid: String, val nickname: String, val body: String)
+data class TextEvent(
+    val fromJid: String,
+    val nickname: String,
+    val body: String,
+    val priority: String = MsgPriority.NORMAL
+)
 
 /**
  * XMPP-клиент на Smack 4.4.x (п. 5.1 ТЗ).
@@ -131,6 +145,14 @@ class XmppManager(
     @Volatile
     var commandMaxAgeMs: Long = 5 * 60_000L
 
+    /**
+     * Bare JID (в нижнем регистре), которым разрешено поднимать priority=critical (full-screen).
+     * null = список ещё не получен: critical понижается до high. Заполняется из REST (WakeUpService).
+     * Отдельно от [trustedCommandSenders]: доверие к командам этим списком не меняется.
+     */
+    @Volatile
+    var trustedPrioritySenders: Set<String>? = null
+
     private val warnedNoTrustList = AtomicBoolean(false)
 
     private val seenCommandIds = object : LinkedHashMap<String, Boolean>(64, 0.75f, false) {
@@ -147,8 +169,8 @@ class XmppManager(
      * Синхронное подключение (connect + login). Исключений наружу не бросает:
      * при ошибке state = Error, при отказе авторизации — событие [authFailed].
      *
-     * @param trustAllCerts не проверять цепочку CA. FIX: по умолчанию теперь false (было true).
-     *                      В release-сборке сервис передаёт false всегда.
+     * @param trustAllCerts не проверять цепочку CA (переключатель из Настроек). FIX: по умолчанию
+     *                      теперь false (было true). Игнорируется, если есть assets/corp_ca.crt.
      * @param securityMode  "required" — TLS обязателен (по умолчанию в release);
      *                      "ifpossible" — TLS если сервер предлагает (в debug);
      *                      "disabled" — без TLS, только в debug.
@@ -192,17 +214,18 @@ class XmppManager(
 
                 if (mode == ConnectionConfiguration.SecurityMode.disabled) {
                     log.w(tag, "TLS отключён полностью — соединение и авторизация идут в открытом виде")
-                } else if (trustAllCerts) {
-                    log.w(tag, "Проверка TLS-сертификата отключена (доверие самоподписанному сертификату)")
-                    TLSUtils.acceptAllCertificates(configBuilder)
-                    TLSUtils.disableHostnameVerificationForTlsCertificates(configBuilder)
                 } else {
-                    // FIX: доверие корпоративному CA вместо «доверять всем».
+                    // FIX: доверие корпоративному CA — приоритетнее, чем «доверять всем».
                     // Положите сертификат CA в app/src/main/assets/corp_ca.crt.
                     // Имя хоста проверяется по XMPP-домену: в сертификате Openfire он должен быть в SAN.
-                    corpSslContext()?.let {
-                        configBuilder.setCustomSSLContext(it)
+                    val corp = corpSslContext()
+                    if (corp != null) {
+                        configBuilder.setCustomSSLContext(corp)
                         log.i(tag, "TLS: используется корпоративный CA из assets/$CORP_CA_ASSET")
+                    } else if (trustAllCerts) {
+                        log.w(tag, "Проверка TLS-сертификата отключена (доверие самоподписанному сертификату)")
+                        TLSUtils.acceptAllCertificates(configBuilder)
+                        TLSUtils.disableHostnameVerificationForTlsCertificates(configBuilder)
                     }
                 }
 
@@ -413,13 +436,15 @@ class XmppManager(
         // FIX: stanzaId может отсутствовать (platform type) -> NPE в repo
         val stanzaId = message.stanzaId ?: UUID.randomUUID().toString()
         val command = CommandParser.parse(body)
+        val declaredPriority = parsePriority(message)
+        val priority = effectivePriority(jid, declaredPriority)
 
         val rejectReason = if (command != null) commandRejectReason(jid, stanzaId, message) else null
 
         log.i(
             tag,
             "Получено XMPP-сообщение от $jid: " + when {
-                command == null -> "текст (${body.length} симв.)"
+                command == null -> "текст (${body.length} симв.), приоритет $priority"
                 rejectReason != null -> "команда ${command.logName} ОТКЛОНЕНА ($rejectReason)"
                 else -> "команда ${command.logName}"
             }
@@ -427,13 +452,37 @@ class XmppManager(
 
         scope.launch {
             repo.ensureUser(jid)
-            repo.saveIncoming(stanzaId, jid, body, command != null)
+            // В БД пишем приоритет как он пришёл (для аудита); поведение считается по эффективному.
+            val saved = repo.saveIncoming(stanzaId, jid, body, command != null, declaredPriority)
+            if (!saved.isNew) {
+                // повторная доставка (например, из офлайн-хранилища Openfire): без уведомления и без выполнения
+                log.i(tag, "Повторная доставка $stanzaId — пропущена")
+                return@launch
+            }
             when {
-                command == null -> _texts.emit(TextEvent(jid, jid.substringBefore('@'), body))
-                rejectReason == null -> _commands.emit(CommandEvent(command, jid, body))
+                command == null -> _texts.emit(TextEvent(jid, jid.substringBefore('@'), body, priority))
+                rejectReason == null -> _commands.emit(CommandEvent(command, jid, body, priority))
                 // отклонённая команда сохранена в истории, но не выполняется
             }
         }
+    }
+
+    /** Приоритет из расширения <priority xmlns="urn:wakeup:msg:0" level="..."/>; нет расширения -> normal. */
+    private fun parsePriority(message: Message): String {
+        val ext = message.extensions.firstOrNull {
+            it.elementName == Const.PRIORITY_ELEMENT && it.namespace == Const.PRIORITY_NS
+        } ?: return MsgPriority.NORMAL
+        return MsgPriority.parse((ext as? StandardExtensionElement)?.getAttributeValue("level"))
+    }
+
+    /** critical принимается только от доверенных отправителей, иначе понижается до high. */
+    private fun effectivePriority(jid: String, declared: String): String {
+        if (declared != MsgPriority.CRITICAL) return declared
+        val trusted = trustedPrioritySenders
+        if (trusted != null && jid.lowercase() in trusted) return declared
+        log.w(tag, "priority=critical от $jid понижен до high (" +
+            (if (trusted == null) "список доверенных ещё не получен" else "отправитель не в списке") + ")")
+        return MsgPriority.HIGH
     }
 
     /** null = команду можно выполнять. */
@@ -581,3 +630,5 @@ class XmppManager(
         const val PING_INTERVAL_SEC = 60
     }
 }
+
+

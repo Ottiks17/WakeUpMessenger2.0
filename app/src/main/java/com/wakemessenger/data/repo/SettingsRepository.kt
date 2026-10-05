@@ -1,3 +1,4 @@
+
 package com.wakemessenger.data.repo
 
 import android.content.Context
@@ -28,10 +29,13 @@ class SettingsRepository(private val ctx: Context, private val dao: SettingsDao)
         return normalized.trimEnd('/') + ":" + port
     }
 
-    suspend fun wmsPackage(): String = get(Const.S_WMS_PACKAGE, Const.DEF_WMS_PACKAGE)
-    suspend fun wmsAction(): String = get(Const.S_WMS_ACTION, Const.DEF_WMS_ACTION)
+    /** null — список ещё ни разу не получали (тогда critical понижается до high). */
+    suspend fun trustedSenders(): Set<String>? =
+        dao.get(Const.S_TRUSTED_SENDERS)?.split(',')?.map { it.trim().lowercase() }?.filter { it.isNotEmpty() }?.toSet()
+
+    suspend fun setTrustedSenders(senders: Set<String>) = set(Const.S_TRUSTED_SENDERS, senders.joinToString(","))
+
     suspend fun presenceMode(): String = get(Const.S_PRESENCE, Const.PRESENCE_ONLINE)
-    suspend fun nickname(): String = get(Const.S_NICK, "")
 
     // ---- Независимый блок "чат": режим получения XMPP-кредов ----
     suspend fun xmppMode(): String = get(Const.S_XMPP_MODE, Const.MODE_AUTO)
@@ -49,3 +53,5 @@ class SettingsRepository(private val ctx: Context, private val dao: SettingsDao)
 
     fun observeAll() = dao.observeAll()
 }
+
+

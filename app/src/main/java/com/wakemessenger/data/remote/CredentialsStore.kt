@@ -16,19 +16,26 @@ import androidx.security.crypto.MasterKey
  */
 class CredentialsStore(ctx: Context) {
 
+    /** true — хранилище реально зашифровано (Keystore доступен). */
+    @Volatile
+    private var encrypted = false
+
     private val prefs: SharedPreferences = runCatching {
         val key = MasterKey.Builder(ctx)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
+        val p = EncryptedSharedPreferences.create(
             ctx,
             "wakeup_creds_enc",
             key,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         ) as SharedPreferences
+        encrypted = true
+        p
     }.getOrElse {
-        // На ряде ТСД Keystore может быть недоступен — работаем без fallback-кэша.
+        // На ряде ТСД Keystore может быть недоступен. Fallback-креды в этом случае на диск
+        // НЕ пишутся (п. 5.5 ТЗ). Обычные SharedPreferences остаются только для ручного пароля.
         ctx.getSharedPreferences("wakeup_creds_mem", Context.MODE_PRIVATE)
     }
 
@@ -39,6 +46,7 @@ class CredentialsStore(ctx: Context) {
 
     fun save(c: XmppCredentials) {
         inMemory = c
+        if (!encrypted) return   // без шифрования пароль на диск не пишем
         prefs.edit()
             .putString("xmppHost", c.xmppHost)
             .putInt("xmppPort", c.xmppPort)
@@ -52,6 +60,7 @@ class CredentialsStore(ctx: Context) {
 
     fun last(): XmppCredentials? {
         inMemory?.let { return it }
+        if (!encrypted) return null
         val host = prefs.getString("xmppHost", null) ?: return null
         val login = prefs.getString("xmppLogin", null) ?: return null
         val pass = prefs.getString("xmppPassword", null) ?: return null
@@ -67,9 +76,16 @@ class CredentialsStore(ctx: Context) {
 
     fun savedAt(): Long = prefs.getLong("savedAt", 0L)
 
+    /**
+     * Сбрасывает только fallback-креды из REST. Раньше prefs.edit().clear() стирал заодно и
+     * ручной пароль XMPP (при любой ошибке авторизации вызывается invalidate()).
+     */
     fun clear() {
         inMemory = null
-        prefs.edit().clear().apply()
+        prefs.edit()
+            .remove("xmppHost").remove("xmppPort").remove("xmppLogin").remove("xmppPassword")
+            .remove("apiHost").remove("apiPort").remove("savedAt")
+            .apply()
     }
 
     // ---- Ручной вход в XMPP (независимый от REST API блок) ----

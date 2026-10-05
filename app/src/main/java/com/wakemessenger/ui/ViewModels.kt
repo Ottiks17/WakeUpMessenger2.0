@@ -70,8 +70,6 @@ data class SettingsUi(
     val deviceId: String = "",
     val apiHost: String = "",
     val apiPort: String = "",
-    val wmsPackage: String = "",
-    val wmsAction: String = "",
     val presence: String = Const.PRESENCE_ONLINE,
     val batteryOk: Boolean = false,
     val backgroundOk: Boolean = false,
@@ -107,8 +105,6 @@ class SettingsViewModel : ViewModel() {
                 deviceId = s.deviceId(),
                 apiHost = s.get(Const.S_API_HOST, Const.DEF_API_HOST),
                 apiPort = s.get(Const.S_API_PORT, Const.DEF_API_PORT),
-                wmsPackage = s.wmsPackage(),
-                wmsAction = s.wmsAction(),
                 presence = s.presenceMode(),
                 batteryOk = com.wakemessenger.core.PowerSaveChecker.isIgnoringBatteryOptimizations(ctx),
                 backgroundOk = com.wakemessenger.core.PowerSaveChecker.isBackgroundAllowed(ctx),
@@ -127,8 +123,6 @@ class SettingsViewModel : ViewModel() {
         _ui.value = when (field) {
             Const.S_API_HOST -> _ui.value.copy(apiHost = value)
             Const.S_API_PORT -> _ui.value.copy(apiPort = value)
-            Const.S_WMS_PACKAGE -> _ui.value.copy(wmsPackage = value)
-            Const.S_WMS_ACTION -> _ui.value.copy(wmsAction = value)
             Const.S_DEVICE_ID -> _ui.value.copy(deviceId = value)
             Const.S_XMPP_MANUAL_HOST -> _ui.value.copy(manualHost = value)
             Const.S_XMPP_MANUAL_PORT -> _ui.value.copy(manualPort = value)
@@ -157,8 +151,6 @@ class SettingsViewModel : ViewModel() {
             val s = AppGraph.settings
             s.set(Const.S_API_HOST, u.apiHost.trim())
             s.set(Const.S_API_PORT, u.apiPort.trim().ifEmpty { Const.DEF_API_PORT })
-            s.set(Const.S_WMS_PACKAGE, u.wmsPackage.trim())
-            s.set(Const.S_WMS_ACTION, u.wmsAction.trim())
             s.set(Const.S_DEVICE_ID, u.deviceId.trim())
             // Независимый блок "чат": ручные XMPP-креды
             s.set(Const.S_XMPP_MANUAL_HOST, u.manualHost.trim())
@@ -188,90 +180,6 @@ class SettingsViewModel : ViewModel() {
                 .setAction(Const.ACTION_RECONNECT)
         )
         _ui.value = _ui.value.copy(lastResult = "Переподключение запущено")
-    }
-}
-
-// ------------------------------------------------------------------------------------
-// Независимый блок "вызов API-методов" — не связан с состоянием XMPP-чата.
-// Каждый вызов выполняется по требованию пользователя и не влияет на подключение к Openfire.
-// ------------------------------------------------------------------------------------
-
-data class ApiUi(
-    val deviceId: String = "",
-    val taskId: String = "",
-    val busy: String? = null,
-    val result: String? = null,
-    val lastFetched: com.wakemessenger.data.remote.XmppCredentials? = null
-)
-
-class ApiViewModel : ViewModel() {
-
-    private val _ui = MutableStateFlow(ApiUi())
-    val ui: StateFlow<ApiUi> = _ui
-
-    init {
-        viewModelScope.launch {
-            _ui.value = _ui.value.copy(deviceId = AppGraph.settings.deviceId())
-        }
-    }
-
-    fun setDeviceId(v: String) {
-        _ui.value = _ui.value.copy(deviceId = v)
-    }
-
-    fun setTaskId(v: String) {
-        _ui.value = _ui.value.copy(taskId = v)
-    }
-
-    fun callAuth() = run("GET /v1/auth/xmpp") {
-        val c = AppGraph.api.fetchCredentials(_ui.value.deviceId)
-        _ui.value = _ui.value.copy(lastFetched = c)
-        "host=${c.xmppHost}:${c.xmppPort}\nlogin=${c.xmppLogin}\npassword=${"•".repeat(c.xmppPassword.length)}"
-    }
-
-    fun callConfirm() = run("POST /v1/wakeup/confirm") {
-        val ok = AppGraph.api.confirmWakeup(_ui.value.deviceId, _ui.value.taskId)
-        if (ok) "OK — сервер подтвердил" else "Сервер ответил не 2xx"
-    }
-
-    fun callTasks() = run("GET /v1/tasks") {
-        val tasks = AppGraph.api.tasks(_ui.value.deviceId)
-        if (tasks.isEmpty()) "Заданий нет" else tasks.joinToString("\n") { "• ${it.taskId}  ${it.title}" }
-    }
-
-    fun callInfo() = run("GET /wakeup/info") {
-        val i = AppGraph.api.wakeupInfo(_ui.value.deviceId)
-        "pingCount=${i.pingCount}, oldPingCount=${i.oldPingCount}"
-    }
-
-    fun callReset() = run("DELETE /wakeup/reset") {
-        AppGraph.api.wakeupReset(_ui.value.deviceId)
-        "Счётчик сброшен"
-    }
-
-    /** Перенести только что полученные из /v1/auth/xmpp данные в ручной вход XMPP-чата. */
-    fun applyFetchedAsManual(onApplied: () -> Unit) {
-        val c = _ui.value.lastFetched ?: return
-        viewModelScope.launch {
-            val s = AppGraph.settings
-            s.set(Const.S_XMPP_MANUAL_HOST, c.xmppHost)
-            s.set(Const.S_XMPP_MANUAL_PORT, c.xmppPort.toString())
-            s.set(Const.S_XMPP_MANUAL_LOGIN, c.xmppLogin)
-            AppGraph.credentials.saveManualPassword(c.xmppPassword)
-            s.set(Const.S_XMPP_MODE, Const.MODE_MANUAL)
-            onApplied()
-        }
-    }
-
-    private fun run(label: String, block: suspend () -> String) {
-        viewModelScope.launch {
-            _ui.value = _ui.value.copy(busy = "$label…", result = null)
-            val r = runCatching { block() }
-            _ui.value = _ui.value.copy(
-                busy = null,
-                result = label + "\n" + r.getOrElse { "Ошибка: ${it.message}" }
-            )
-        }
     }
 }
 

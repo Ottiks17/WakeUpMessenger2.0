@@ -15,8 +15,10 @@ data class XmppCredentials(
 
     val username: String
         get() = xmppLogin.substringBefore('@')
-}
 
-data class TaskItem(val taskId: String, val title: String, val raw: String)
+    /** п. 5.5 ТЗ: пароль не выводится, даже если объект случайно попадёт в лог. */
+    override fun toString(): String =
+        "XmppCredentials(xmpp=$xmppHost:$xmppPort, login=$xmppLogin, password=***, api=$apiHost:$apiPort)"
+}
 
 data class WakeupInfo(val pingCount: Int, val oldPingCount: Int, val raw: String)

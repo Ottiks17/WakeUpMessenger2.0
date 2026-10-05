@@ -21,7 +21,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wakemessenger.AppGraph
 import com.wakemessenger.core.PowerSaveChecker
-import com.wakemessenger.ui.screens.ApiScreen
 import com.wakemessenger.ui.screens.ChatListScreen
 import com.wakemessenger.ui.screens.ChatScreen
 import com.wakemessenger.ui.screens.LogScreen
@@ -104,15 +103,11 @@ fun AppNavigation(openChatJid: String?) {
         composable(Nav.SETTINGS) {
             SettingsScreen(
                 onBack = { nav.popBackStack() },
-                onOpenLog = { nav.navigate(Nav.LOG) },
-                onOpenApi = { nav.navigate(Nav.API) }
+                onOpenLog = { nav.navigate(Nav.LOG) }
             )
         }
         composable(Nav.LOG) {
             LogScreen(onBack = { nav.popBackStack() })
-        }
-        composable(Nav.API) {
-            ApiScreen(onBack = { nav.popBackStack() })
         }
     }
 }

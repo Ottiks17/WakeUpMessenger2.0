@@ -1,12 +1,17 @@
+
 package com.wakemessenger.data.repo
 
 import com.wakemessenger.data.local.MessageDao
 import com.wakemessenger.data.local.MessageEntity
+import com.wakemessenger.data.local.MsgPriority
 import com.wakemessenger.data.local.MsgStatus
 import com.wakemessenger.data.local.UserDao
 import com.wakemessenger.data.local.UserEntity
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
+
+/** Результат сохранения входящего: isNew=false — это повторная доставка уже сохранённого сообщения. */
+data class IncomingSave(val message: MessageEntity, val isNew: Boolean)
 
 /** Доступ к истории переписки и пользователям (таблицы chat_messages / chat_users). */
 class ChatRepository(
@@ -15,7 +20,6 @@ class ChatRepository(
 ) {
     fun chatList() = messages.observeChatList()
     fun chat(jid: String): Flow<List<MessageEntity>> = messages.observeChat(jid)
-    fun totalUnread(): Flow<Int> = messages.observeTotalUnread()
     fun users(): Flow<List<UserEntity>> = users.observeAll()
     fun user(jid: String): Flow<UserEntity?> = users.observe(jid)
 
@@ -28,7 +32,13 @@ class ChatRepository(
         }
     }
 
-    suspend fun saveIncoming(id: String?, chatJid: String, body: String, isCommand: Boolean): MessageEntity {
+    suspend fun saveIncoming(
+        id: String?,
+        chatJid: String,
+        body: String,
+        isCommand: Boolean,
+        priority: String = MsgPriority.NORMAL
+    ): IncomingSave {
         ensureUser(chatJid)
         val m = MessageEntity(
             id = id ?: UUID.randomUUID().toString(),
@@ -39,10 +49,11 @@ class ChatRepository(
             outgoing = false,
             status = MsgStatus.INCOMING,
             isCommand = isCommand,
-            read = false
+            read = false,
+            priority = priority
         )
-        messages.insert(m)
-        return m
+        val isNew = messages.insertIfAbsent(m) != -1L
+        return IncomingSave(m, isNew)
     }
 
     /** Создаёт исходящее сообщение в статусе PENDING (офлайн-очередь). */
@@ -72,3 +83,5 @@ class ChatRepository(
     suspend fun setTyping(jid: String, typing: Boolean) = users.updateTyping(jid, typing)
     suspend fun allOffline() = users.allOffline()
 }
+
+

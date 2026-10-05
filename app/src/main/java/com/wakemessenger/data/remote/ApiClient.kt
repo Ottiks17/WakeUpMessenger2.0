@@ -1,3 +1,4 @@
+
 package com.wakemessenger.data.remote
 
 import android.content.Context
@@ -126,23 +127,22 @@ class ApiClient(
         return res.code in 200..299
     }
 
-    // ---------- GET /v1/tasks ----------
+    // ---------- GET /v1/config/trusted-senders ----------
 
-    suspend fun tasks(deviceId: String): List<TaskItem> {
-        val url = "${settings.apiBaseUrl()}/v1/tasks?deviceId=${enc(deviceId)}"
+    /**
+     * Bare JID отправителей, которым разрешено поднимать приоритет critical (full-screen).
+     * Ответ: {"senders": ["server@domain"]} или просто массив строк.
+     */
+    suspend fun fetchTrustedSenders(deviceId: String): Set<String> {
+        val url = "${settings.apiBaseUrl()}${Const.TRUSTED_SENDERS_PATH}?deviceId=${enc(deviceId)}"
         val res = execute(Request.Builder().url(url).get().build())
         if (res.code !in 200..299) throw IOException("HTTP ${res.code}")
-        val arr = runCatching { JSONArray(res.body) }.getOrElse {
-            JSONObject(res.body).optJSONArray("tasks") ?: JSONArray()
-        }
-        return (0 until arr.length()).map { idx ->
-            val o = arr.getJSONObject(idx)
-            TaskItem(
-                taskId = o.optString("taskId", o.optString("id", "")),
-                title = o.optString("title", o.optString("name", "")),
-                raw = o.toString()
-            )
-        }
+        val text = res.body.trim()
+        val arr = if (text.startsWith("[")) JSONArray(text) else JSONObject(text).getJSONArray("senders")
+        return (0 until arr.length())
+            .map { arr.getString(it).substringBefore('/').trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .toSet()
     }
 
     // ---------- Диагностика счётчика (п. 9.4 ТЗ) ----------
@@ -164,3 +164,5 @@ class ApiClient(
 
     private fun enc(s: String): String = java.net.URLEncoder.encode(s, "UTF-8")
 }
+
+

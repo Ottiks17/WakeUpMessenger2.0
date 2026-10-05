@@ -18,6 +18,5 @@ object Nav {
     const val CHAT = "chat/{jid}"
     const val SETTINGS = "settings"
     const val LOG = "log"
-    const val API = "api"
     fun chat(jid: String) = "chat/" + java.net.URLEncoder.encode(jid, "UTF-8")
 }

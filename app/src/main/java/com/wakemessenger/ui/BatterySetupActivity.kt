@@ -88,6 +88,16 @@ private fun BatterySetupScreen(onDone: () -> Unit) {
         ) { Text("Открыть настройки") }
 
         OutlinedButton(
+            onClick = { PowerSaveChecker.openOverlaySettings(ctx) },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Поверх других окон (запуск WMS из фона)") }
+        Text(
+            "Без этого разрешения на Android 10+ команда task не сможет открыть WMS, " +
+                "пока WakeUp Messenger свёрнут (вместо этого придёт уведомление).",
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        OutlinedButton(
             onClick = {
                 val opened = PowerSaveChecker.openAutostartSettings(ctx)
                 if (!opened) message = "Меню автозапуска не найдено на этом устройстве"

@@ -1,3 +1,4 @@
+
 package com.wakemessenger.service
 
 import android.app.NotificationChannel
@@ -13,7 +14,6 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.wakemessenger.AppGraph
-import com.wakemessenger.BuildConfig
 import com.wakemessenger.R
 import com.wakemessenger.core.Const
 import com.wakemessenger.core.PowerSaveChecker
@@ -169,9 +169,9 @@ class WakeUpService : Service() {
 
     private suspend fun connect(creds: XmppCredentials): Boolean {
         xmpp.applyPresenceMode(AppGraph.settings.presenceMode())
-        // SECURITY: отключение проверки TLS разрешено только в debug-сборке.
-        // В release нужен доверенный корпоративный CA (см. network_security_config / SSLContext).
-        xmpp.connect(creds, trustAllCerts = BuildConfig.DEBUG && AppGraph.settings.trustAllCerts())
+        // trustAllCerts — переключатель из Настроек (внутренний Openfire с самоподписанным сертификатом).
+        // SECURITY: если в assets лежит corp_ca.crt, XmppManager использует его вместо «доверять всем».
+        xmpp.connect(creds, trustAllCerts = AppGraph.settings.trustAllCerts())
         // XmppManager.connect синхронный (connect + login) и не бросает исключений:
         // при ошибке он выставляет state=Error. Успех = соединение авторизовано.
         return xmpp.isConnected
@@ -182,7 +182,10 @@ class WakeUpService : Service() {
     private fun observeState() {
         scope.launch {
             xmpp.state.collect { s ->
-                if (s is XmppState.Authenticated) supervisor.onAuthenticated()
+                if (s is XmppState.Authenticated) {
+                    supervisor.onAuthenticated()
+                    refreshTrustedSenders()
+                }
                 val text = when (s) {
                     XmppState.Disconnected -> "Нет соединения, переподключение…"
                     XmppState.Connecting -> "Подключение к серверу…"
@@ -198,7 +201,31 @@ class WakeUpService : Service() {
         // XmppManager отключает ReconnectionManager у заменённого соединения, чтобы не было двойников.
     }
 
+    /**
+     * Список отправителей, которым разрешён priority=critical. Источник — REST (только в auto-режиме:
+     * в manual REST API не вызывается вообще). При ошибке остаётся последний сохранённый список.
+     */
+    private fun refreshTrustedSenders() {
+        scope.launch {
+            try {
+                if (AppGraph.settings.xmppMode() == Const.MODE_MANUAL) return@launch
+                val senders = AppGraph.api.fetchTrustedSenders(AppGraph.settings.deviceId())
+                xmpp.trustedPrioritySenders = senders
+                AppGraph.settings.setTrustedSenders(senders)
+                log.i(tag, "Доверенных отправителей для priority=critical: ${senders.size}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.w(tag, "Список доверенных отправителей не получен: ${e.message} — остаётся сохранённый")
+            }
+        }
+    }
+
     private fun observeEvents() {
+        // Сохранённый список доверенных нужен сразу, до первого ответа REST
+        scope.launch {
+            runCatching { AppGraph.settings.trustedSenders() }.getOrNull()?.let { xmpp.trustedPrioritySenders = it }
+        }
         // Команды
         scope.launch {
             xmpp.commands.collect { event ->
@@ -214,7 +241,7 @@ class WakeUpService : Service() {
         // Текстовые сообщения -> уведомление
         scope.launch {
             xmpp.texts.collect { t ->
-                AppGraph.notifications.message(t.fromJid, t.nickname, t.body)
+                AppGraph.notifications.message(t.fromJid, t.nickname, t.body, t.priority)
             }
         }
         // Ping сервера не прошёл (полуоткрытый TCP, роуминг Wi-Fi) -> переподключаемся сразу
@@ -323,3 +350,5 @@ class WakeUpService : Service() {
         const val BATTERY_NOTIF_ID = 9001
     }
 }
+
+

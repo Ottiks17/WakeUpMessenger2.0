@@ -105,6 +105,16 @@ object PowerSaveChecker {
             .filter { pm.resolveActivity(it, PackageManager.MATCH_DEFAULT_ONLY) != null }
     }
 
+    /** «Поверх других окон» — нужно, чтобы сервис мог открыть WMS из фона (Android 10+). */
+    fun canDrawOverlays(ctx: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx)
+
+    fun openOverlaySettings(ctx: Context) {
+        val i = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + ctx.packageName))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { ctx.startActivity(i) }.isFailure) openAppDetails(ctx)
+    }
+
     fun openAutostartSettings(ctx: Context): Boolean {
         val list = autostartIntents(ctx)
         for (i in list) {

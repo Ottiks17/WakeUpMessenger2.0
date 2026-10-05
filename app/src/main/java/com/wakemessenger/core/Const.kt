@@ -1,3 +1,4 @@
+
 package com.wakemessenger.core
 
 object Const {
@@ -7,6 +8,12 @@ object Const {
     const val CH_SERVICE = "wakeup_service"
     const val CH_MESSAGES = "wakeup_messages"
     const val CH_COMMANDS = "wakeup_commands"
+    // Каналы по приоритету сообщения (importance канала после создания менять нельзя,
+    // поэтому это новые ID; старый CH_MESSAGES удаляется в NotificationHelper).
+    const val CH_MSG_LOW = "wakeup_msg_low"
+    const val CH_MSG_NORMAL = "wakeup_msg_normal"
+    const val CH_MSG_HIGH = "wakeup_msg_high"
+    const val CH_MSG_CRITICAL = "wakeup_msg_critical"
     const val NOTIF_SERVICE_ID = 1001
     const val NOTIF_MESSAGE_BASE = 2000
     const val NOTIF_COMMAND_BASE = 3000
@@ -31,10 +38,8 @@ object Const {
     const val S_API_HOST = "api_host"
     const val S_API_PORT = "api_port"
     const val S_DEVICE_ID = "device_id"
-    const val S_WMS_PACKAGE = "wms_package"
-    const val S_WMS_ACTION = "wms_action"
     const val S_PRESENCE = "presence_mode"      // online | invisible
-    const val S_NICK = "nickname"
+    const val S_TRUSTED_SENDERS = "trusted_senders"  // bare JID через запятую; кэш ответа REST
 
     // --- Режим получения XMPP-кредов (независимый блок "чат") ---
     const val S_XMPP_MODE = "xmpp_mode"          // auto | manual
@@ -48,11 +53,20 @@ object Const {
     // внутренних сетей склада, где сервер использует самоподписанный сертификат.
     const val S_XMPP_TRUST_ALL_CERTS = "xmpp_trust_all_certs"
 
+    // --- Приоритет сообщений (stage1_contract.md) ---
+    const val PRIORITY_ELEMENT = "priority"
+    const val PRIORITY_NS = "urn:wakeup:msg:0"
+    // GET {api}/v1/config/trusted-senders?deviceId=... -> {"senders":["server@domain", ...]}
+    const val TRUSTED_SENDERS_PATH = "/v1/config/trusted-senders"
+
     // --- Значения по умолчанию ---
     const val DEF_API_HOST = "192.168.0.100"
     const val DEF_API_PORT = "80"
-    const val DEF_WMS_PACKAGE = "ru.wms.client"
-    const val DEF_WMS_ACTION = "com.wakemessenger.OPEN_TASK"
+    // WMS-приложение: пакет и action больше не настраиваются в UI — меняются только здесь.
+    // ВАЖНО: WMS_PACKAGE должен совпадать с реальным пакетом WMS на ТСД, а WMS должно
+    // обрабатывать WMS_ACTION (иначе используется запуск через launcher-Intent, п. 13 ТЗ).
+    const val WMS_PACKAGE = "ru.wms.client"
+    const val WMS_ACTION = "com.wakemessenger.OPEN_TASK"
 
     // --- Intent в WMS (п. 2.3 ТЗ) ---
     const val EXTRA_TASK_ID = "task_id"
@@ -65,3 +79,5 @@ object Const {
     const val ACTION_STOP = "com.wakemessenger.action.STOP"
     const val ACTION_RECONNECT = "com.wakemessenger.action.RECONNECT"
 }
+
+

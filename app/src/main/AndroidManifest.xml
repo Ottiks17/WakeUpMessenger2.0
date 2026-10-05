@@ -9,18 +9,20 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- priority=critical: полноэкранное уведомление поверх экрана блокировки.
+         До Android 13 разрешение обычное; на 14+ пользователь может его отозвать (тогда heads-up). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- TODO: заменить на <queries> с пакетом WMS (см. ниже) и удалить это разрешение.
-         Оставлено, чтобы не сломать текущее поведение, пока не известен пакет WMS. -->
+    <!-- Android 10+ не даёт сервису открывать Activity из фона. Разрешение «Поверх других окон»
+         снимает это ограничение — без него команда task не откроет WMS, если приложение свёрнуто.
+         Выдаётся вручную (кнопка на экране настройки) или через MDM. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Нужно, чтобы видеть пакет WMS (Const.WMS_PACKAGE) и активности вендоров в PowerSaveChecker
+         (меню автозапуска). Можно заменить на <queries> с конкретными пакетами, когда пакет WMS известен. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
-
-    <!-- TODO: раскомментировать и подставить реальный пакет WMS
-    <queries>
-        <package android:name="PUT.WMS.PACKAGE.HERE" />
-    </queries>
-    -->
 
     <!-- Требуется для команды restart. Выдаётся только системному/привилегированному приложению.
          TODO: решить — Device Owner (DevicePolicyManager.reboot), priv-app или SDK вендора.
@@ -57,6 +59,14 @@
             android:launchMode="singleTask"
             android:theme="@style/Theme.WakeUpMessenger" />
 
+        <activity
+            android:name=".ui.CriticalAlertActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/Theme.WakeUpMessenger" />
+
         <service
             android:name=".service.WakeUpService"
             android:enabled="true"
@@ -68,9 +78,12 @@
                 android:value="Постоянное XMPP-соединение с сервером склада для приёма команд и сообщений на ТСД" />
         </service>
 
-        <!-- Системные броадкасты доставляются и при exported=false; чужие приложения
-             больше не могут слать этому ресиверу поддельные интенты.
-             QUICKBOOT_* убраны: добавлять только после проверки на конкретной модели ТСД. -->
+        <!-- п. 5.4 ТЗ: BOOT_COMPLETED и QUICKBOOT_POWERON. Системные броадкасты доставляются и при
+             exported=false; чужие приложения не могут слать ресиверу поддельные интенты.
+             TODO: проверить на Atol SmartPrime/SmartSlim, что QUICKBOOT_POWERON доходит.
+             Если нет — поставить exported="true" (в onReceive стоит whitelist действий).
+             На Android 12+ запуск foreground-сервиса из QUICKBOOT_POWERON может быть запрещён
+             системой (в отличие от BOOT_COMPLETED) — тестовые смартфоны на Android 12 это покажут. -->
         <receiver
             android:name=".service.BootReceiver"
             android:enabled="true"
@@ -78,6 +91,8 @@
             android:directBootAware="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
@@ -94,3 +109,5 @@
 
     </application>
 </manifest>
+
+

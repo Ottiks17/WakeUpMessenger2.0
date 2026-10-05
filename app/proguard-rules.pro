@@ -15,3 +15,8 @@
 
 # --- Room ---
 -keep class androidx.room.** { *; }
+
+# --- Tink (транзитивно через androidx.security:security-crypto) ---
+# com.google.errorprone:error_prone_annotations — compile-only зависимость Tink;
+# на рантайме эти аннотации не нужны, R8 ругается на отсутствующие классы.
+-dontwarn com.google.errorprone.annotations.**
